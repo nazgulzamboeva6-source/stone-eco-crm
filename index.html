@@ -5,156 +5,377 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Stone.eco CRM</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
 <style>
+*{box-sizing:border-box}
 body{margin:0;font-family:Arial,sans-serif;background:#f5f6f8;color:#20242a}
-header{background:#fff;padding:16px 20px;border-bottom:1px solid #ddd;font-weight:bold}
-.wrap{display:flex;min-height:calc(100vh - 55px)}
-nav{width:220px;background:#fff;padding:12px;border-right:1px solid #ddd}
-nav button{display:block;width:100%;padding:13px;text-align:left;border:0;background:#fff;border-radius:8px;font-size:15px;cursor:pointer}
-nav button:hover{background:#eef5ee}
-main{padding:22px;flex:1}
+header{height:55px;background:#fff;border-bottom:1px solid #ddd;padding:16px 22px;font-size:20px;font-weight:bold}
+nav{position:fixed;top:55px;bottom:0;width:220px;background:#fff;border-right:1px solid #ddd;padding:15px}
+nav button{display:block;width:100%;padding:13px;border:0;background:#fff;text-align:left;border-radius:7px;cursor:pointer;font-size:15px;margin-bottom:4px}
+nav button:hover{background:#f0f2f4}
+main{margin-left:220px;padding:25px}
 .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:14px}
-.card,.panel{background:#fff;border:1px solid #ddd;border-radius:12px;padding:18px;margin-bottom:16px}
+.card{background:#fff;border:1px solid #ddd;border-radius:12px;padding:18px}
 .num{font-size:28px;font-weight:bold;margin-top:8px}
-input{width:100%;padding:11px;margin:6px 0 12px;box-sizing:border-box;border:1px solid #bbb;border-radius:7px}
+.panel{background:#fff;border:1px solid #ddd;border-radius:12px;padding:20px;margin-top:15px}
+input,select{padding:11px;border:1px solid #ccc;border-radius:7px;width:100%;margin-bottom:10px}
 .btn{background:#198754;color:#fff;border:0;border-radius:7px;padding:11px 16px;cursor:pointer}
-.btn:disabled{opacity:.6;cursor:wait}
-table{border-collapse:collapse;width:100%;overflow:auto}
-td,th{padding:9px;border-bottom:1px solid #eee;text-align:left}
-.notice{padding:12px;border-radius:8px;background:#fff3cd;margin-top:12px}
-@media(max-width:650px){nav{width:65px}nav button{font-size:18px}nav button span{display:none}main{padding:12px}}
+.btn.red{background:#dc3545}
+.btn.gray{background:#6c757d}
+.btn.small{padding:7px 10px;margin:2px}
+table{width:100%;border-collapse:collapse;margin-top:15px}
+th,td{padding:11px;border-bottom:1px solid #ddd;text-align:left}
+th{background:#f5f5f5}
+.status{float:right;font-size:14px;font-weight:normal}
+.formgrid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+.search{max-width:400px}
+@media(max-width:700px){
+nav{width:160px}
+main{margin-left:160px;padding:12px}
+.formgrid{grid-template-columns:1fr}
+}
 </style>
 </head>
+
 <body>
-<header>🪨 Stone.eco CRM <span id="status" style="float:right;font-weight:normal">Не подключено</span></header>
-<div class="wrap"><nav id="nav"></nav><main id="app"></main></div>
+
+<header>
+Stone.eco CRM
+<span id="status" class="status">Не подключено</span>
+</header>
+
+<nav>
+<button onclick="show('dashboard')">🏠 Главная</button>
+<button onclick="show('clients')">👥 Клиенты</button>
+<button onclick="show('products')">📦 Товары</button>
+<button onclick="show('sales')">💰 Продажи</button>
+<button onclick="show('purchases')">🛒 Закупки</button>
+<button onclick="show('production_plan')">🏭 Производство</button>
+<button onclick="show('expenses')">💸 Расходы</button>
+<button onclick="show('reports')">📊 Отчёты</button>
+<button onclick="show('settings')">⚙️ Настройки</button>
+</nav>
+
+<main id="main"></main>
 
 <script>
-const DEFAULT_URL="https://tjlacpmsfyaavkladrvh.supabase.co";
-let db=null,current="dashboard";
+const SUPABASE_URL="https://tjlacpmsfyaavkladrvh.supabase.co";
+let db=null;
+let editingId=null;
 
-const menu=[
-["dashboard","🏠","Главная"],["clients","👥","Клиенты"],["products","📦","Товары"],
-["sales","💰","Продажи"],["purchases","🛒","Закупки"],["production_plan","🏭","Производство"],
-["expenses","💸","Расходы"],["reports","📊","Отчёты"],["settings","⚙️","Настройки"]
-];
-
-const navEl=()=>document.getElementById("nav");
-const appEl=()=>document.getElementById("app");
-const statusEl=()=>document.getElementById("status");
-
-function nav(){
-  navEl().innerHTML=menu.map(x=>`<button onclick="show('${x[0]}')">${x[1]} <span>${x[2]}</span></button>`).join("");
+function connect(){
+ const key=localStorage.getItem("stone_key");
+ if(key){
+   db=supabase.createClient(SUPABASE_URL,key);
+   document.getElementById("status").textContent="Подключено";
+   return true;
+ }
+ document.getElementById("status").textContent="Не подключено";
+ return false;
 }
 
-function setStatus(text,connected=false){
-  statusEl().textContent=text;
-  statusEl().style.color=connected ? "#198754" : "";
+async function count(table){
+ if(!db)return 0;
+ const {count,error}=await db.from(table).select("*",{count:"exact",head:true});
+ return error?0:count||0;
 }
 
-async function count(t){
-  if(!db) return 0;
-  const r=await db.from(t).select("*",{count:"exact",head:true});
-  return r.error ? 0 : (r.count||0);
+async function dashboard(){
+ main.innerHTML=`
+ <h1>Главная</h1>
+ <div class="cards">
+   <div class="card">Клиенты<div class="num" id="c1">0</div></div>
+   <div class="card">Товары<div class="num" id="c2">0</div></div>
+   <div class="card">Продажи<div class="num" id="c3">0</div></div>
+   <div class="card">Закупки<div class="num" id="c4">0</div></div>
+   <div class="card">Производство<div class="num" id="c5">0</div></div>
+   <div class="card">Расходы<div class="num" id="c6">0</div></div>
+ </div>
+ <div class="panel">Stone.eco CRM — управление клиентами, товарами, продажами, закупками, производством и расходами.</div>`;
+
+ if(db){
+  c1.textContent=await count("clients");
+  c2.textContent=await count("products");
+  c3.textContent=await count("sales");
+  c4.textContent=await count("purchases");
+  c5.textContent=await count("production_plan");
+  c6.textContent=await count("expenses");
+ }
 }
 
-async function show(id){
-  current=id;
-  nav();
-  if(id==="settings") return settings();
+async function clients(){
+ if(!db){
+  main.innerHTML="<h1>Клиенты</h1><div class='panel'>Сначала подключите Supabase в разделе Настройки.</div>";
+  return;
+ }
 
-  if(id==="dashboard"){
-    appEl().innerHTML="<h1>Главная</h1><div class='cards' id='cards'></div><div class='panel'>Stone.eco CRM — управление клиентами, товарами, продажами, закупками, производством и расходами.</div>";
-    const ts=["clients","products","sales","purchases","production_plan","expenses"];
-    const ns=["Клиенты","Товары","Продажи","Закупки","Производство","Расходы"];
-    const a=[];
-    for(const t of ts) a.push(await count(t));
-    document.getElementById("cards").innerHTML=a.map((n,i)=>`<div class='card'>${ns[i]}<div class='num'>${n}</div></div>`).join("");
-    return;
-  }
+ main.innerHTML=`
+ <h1>Клиенты</h1>
 
-  const names={clients:"Клиенты",products:"Товары",sales:"Продажи",purchases:"Закупки",production_plan:"Производство",expenses:"Расходы",reports:"Отчёты"};
-  appEl().innerHTML=`<h1>${names[id]}</h1><div class='panel'><button class='btn' onclick="loadData('${id}')">Загрузить данные</button></div><div id='data'></div>`;
+ <div class="panel">
+   <button class="btn" onclick="clientForm()">➕ Добавить клиента</button>
+   <input class="search" id="clientSearch" placeholder="🔍 Поиск клиента..." oninput="filterClients()">
+ </div>
+
+ <div class="panel" id="clientFormBox" style="display:none"></div>
+
+ <div class="panel">
+   <table>
+    <thead>
+     <tr>
+      <th>Имя / компания</th>
+      <th>Телефон</th>
+      <th>Тип клиента</th>
+      <th>Адрес</th>
+      <th>Действия</th>
+     </tr>
+    </thead>
+    <tbody id="clientRows"></tbody>
+   </table>
+ </div>`;
+
+ await loadClients();
 }
 
-async function loadData(t){
-  if(!db) return settings();
-  const r=await db.from(t).select("*").limit(100);
-  const dataEl=document.getElementById("data");
-  if(r.error){dataEl.innerHTML="<div class='panel'>Ошибка: "+r.error.message+"</div>";return}
-  if(!r.data.length){dataEl.innerHTML="<div class='panel'>Пока нет записей.</div>";return}
-  const k=Object.keys(r.data[0]);
-  dataEl.innerHTML="<div class='panel' style='overflow:auto'><table><tr>"+k.map(x=>"<th>"+x+"</th>").join("")+"</tr>"+
-    r.data.map(row=>"<tr>"+k.map(x=>"<td>"+(row[x]??"")+"</td>").join("")+"</tr>").join("")+"</table></div>";
+let clientsData=[];
+
+async function loadClients(){
+ const {data,error}=await db.from("clients")
+   .select("id,name,phone,client_type,address,created_at")
+   .order("created_at",{ascending:false});
+
+ if(error){
+  clientRows.innerHTML="<tr><td colspan='5'>Ошибка загрузки: "+error.message+"</td></tr>";
+  return;
+ }
+
+ clientsData=data||[];
+ renderClients(clientsData);
+}
+
+function renderClients(data){
+ const rows=document.getElementById("clientRows");
+ if(!data.length){
+  rows.innerHTML="<tr><td colspan='5'>Клиентов пока нет</td></tr>";
+  return;
+ }
+
+ rows.innerHTML=data.map(c=>`
+ <tr>
+  <td>${esc(c.name)}</td>
+  <td>${esc(c.phone||"")}</td>
+  <td>${esc(c.client_type||"")}</td>
+  <td>${esc(c.address||"")}</td>
+  <td>
+   <button class="btn small" onclick="editClient('${c.id}')">✏️</button>
+   <button class="btn red small" onclick="deleteClient('${c.id}')">🗑️</button>
+  </td>
+ </tr>`).join("");
+}
+
+function filterClients(){
+ const q=(document.getElementById("clientSearch").value||"").toLowerCase();
+ renderClients(clientsData.filter(c=>
+  (c.name||"").toLowerCase().includes(q) ||
+  (c.phone||"").toLowerCase().includes(q) ||
+  (c.address||"").toLowerCase().includes(q)
+ ));
+}
+
+function clientForm(c=null){
+ editingId=c?c.id:null;
+
+ document.getElementById("clientFormBox").style.display="block";
+ document.getElementById("clientFormBox").innerHTML=`
+ <h2>${c?"Редактировать клиента":"Новый клиент"}</h2>
+
+ <div class="formgrid">
+  <div>
+   <label>Имя / название компании *</label>
+   <input id="f_name" value="${esc(c?.name||"")}" placeholder="Например: ОсОО Stone House">
+  </div>
+
+  <div>
+   <label>Телефон</label>
+   <input id="f_phone" value="${esc(c?.phone||"")}" placeholder="+996 ...">
+  </div>
+
+  <div>
+   <label>Тип клиента</label>
+   <select id="f_type">
+    <option value="">Выберите тип</option>
+    <option ${c?.client_type==="Частное лицо"?"selected":""}>Частное лицо</option>
+    <option ${c?.client_type==="Компания"?"selected":""}>Компания</option>
+    <option ${c?.client_type==="Оптовый клиент"?"selected":""}>Оптовый клиент</option>
+    <option ${c?.client_type==="Дилер"?"selected":""}>Дилер</option>
+   </select>
+  </div>
+
+  <div>
+   <label>Адрес</label>
+   <input id="f_address" value="${esc(c?.address||"")}" placeholder="Адрес">
+  </div>
+ </div>
+
+ <button class="btn" onclick="saveClient()">💾 Сохранить</button>
+ <button class="btn gray" onclick="closeClientForm()">Отмена</button>
+ `;
+}
+
+function closeClientForm(){
+ editingId=null;
+ const box=document.getElementById("clientFormBox");
+ if(box)box.style.display="none";
+}
+
+async function saveClient(){
+ const name=document.getElementById("f_name").value.trim();
+
+ if(!name){
+  alert("Введите имя или название компании");
+  return;
+ }
+
+ const obj={
+  name:name,
+  phone:document.getElementById("f_phone").value.trim(),
+  client_type:document.getElementById("f_type").value,
+  address:document.getElementById("f_address").value.trim()
+ };
+
+ let result;
+
+ if(editingId){
+  result=await db.from("clients").update(obj).eq("id",editingId);
+ }else{
+  result=await db.from("clients").insert(obj);
+ }
+
+ if(result.error){
+  alert("Ошибка: "+result.error.message);
+  return;
+ }
+
+ alert(editingId?"Клиент изменён":"Клиент добавлен");
+ closeClientForm();
+ await loadClients();
+}
+
+async function editClient(id){
+ const c=clientsData.find(x=>x.id===id);
+ if(c)clientForm(c);
+}
+
+async function deleteClient(id){
+ const c=clientsData.find(x=>x.id===id);
+ if(!c)return;
+
+ if(!confirm("Удалить клиента «"+c.name+"»?"))return;
+
+ const {error}=await db.from("clients").delete().eq("id",id);
+
+ if(error){
+  alert("Ошибка удаления: "+error.message);
+  return;
+ }
+
+ await loadClients();
+}
+
+function esc(v){
+ return String(v??"")
+  .replaceAll("&","&amp;")
+  .replaceAll("<","&lt;")
+  .replaceAll(">","&gt;")
+  .replaceAll('"',"&quot;")
+  .replaceAll("'","&#039;");
+}
+
+async function simpleTable(table,title){
+ if(!db){
+  main.innerHTML="<h1>"+title+"</h1><div class='panel'>Сначала подключите Supabase.</div>";
+  return;
+ }
+
+ main.innerHTML="<h1>"+title+"</h1><div class='panel'><button class='btn' onclick=\"loadTable('"+table+"')\">Загрузить данные</button><div id='tableData'></div></div>";
+}
+
+async function loadTable(table){
+ const {data,error}=await db.from(table).select("*").limit(100);
+
+ if(error){
+  tableData.innerHTML="<p>Ошибка: "+error.message+"</p>";
+  return;
+ }
+
+ if(!data.length){
+  tableData.innerHTML="<p>Данных пока нет.</p>";
+  return;
+ }
+
+ let keys=Object.keys(data[0]);
+ let html="<table><thead><tr>"+keys.map(k=>"<th>"+k+"</th>").join("")+"</tr></thead><tbody>";
+
+ data.forEach(row=>{
+  html+="<tr>"+keys.map(k=>"<td>"+esc(row[k])+"</td>").join("")+"</tr>";
+ });
+
+ html+="</tbody></table>";
+ tableData.innerHTML=html;
+}
+
+function reports(){
+ main.innerHTML="<h1>Отчёты</h1><div class='panel'>Раздел отчётов будет подключён следующим этапом.</div>";
 }
 
 function settings(){
-  const savedKey=localStorage.getItem("stone_key")||"";
-  const savedUrl=localStorage.getItem("stone_url")||DEFAULT_URL;
-  appEl().innerHTML=`<div class='panel' style='max-width:600px;margin:30px auto'>
-    <h1>Подключение CRM</h1>
-    <p>Введите только <b>Publishable key</b> из Supabase → Settings → API Keys.</p>
-    <label>Supabase URL</label><input id='url' value='${savedUrl}'>
-    <label>Publishable key</label><input id='key' type='password' value='${savedKey}' placeholder='sb_publishable_...'>
-    <button id='connectBtn' class='btn' onclick='connect()'>Подключить</button>
-    <p>⚠️ Secret key сюда не вводите.</p>
-    <div id='connectMsg'></div>
-  </div>`;
+ main.innerHTML=`
+ <h1>Настройки</h1>
+ <div class="panel">
+  <h2>Подключение CRM</h2>
+  <p>Введите только <b>Publishable key</b> из Supabase → Settings → API Keys.</p>
+
+  <label>Supabase URL</label>
+  <input id="supabaseUrl" value="${SUPABASE_URL}">
+
+  <label>Publishable key</label>
+  <input id="supabaseKey" type="password" placeholder="sb_publishable_...">
+
+  <button class="btn" onclick="saveSettings()">Подключить</button>
+
+  <p>⚠️ Secret key сюда не вводите.</p>
+ </div>`;
 }
 
-async function connect(){
-  const u=document.getElementById("url").value.trim();
-  const k=document.getElementById("key").value.trim();
-  const btn=document.getElementById("connectBtn");
-  const msg=document.getElementById("connectMsg");
+function saveSettings(){
+ const key=document.getElementById("supabaseKey").value.trim();
 
-  if(!u || !k){alert("Введите Supabase URL и Publishable key");return}
-  btn.disabled=true;
-  msg.innerHTML="Подключаемся…";
+ if(!key){
+  alert("Введите Publishable key");
+  return;
+ }
 
-  try{
-    const client=supabase.createClient(u,k);
-    // Проверяем, что ключ и URL действительно позволяют обратиться к проекту.
-    const test=await client.from("clients").select("id",{count:"exact",head:true});
-    if(test.error){
-      throw new Error(test.error.message);
-    }
-
-    db=client;
-    localStorage.setItem("stone_url",u);
-    localStorage.setItem("stone_key",k);
-    setStatus("Подключено",true);
-    msg.innerHTML="<div style='color:#198754;margin-top:10px'>✓ CRM подключена и данные сохранены в этом браузере.</div>";
-    setTimeout(()=>show("dashboard"),500);
-  }catch(e){
-    db=null;
-    setStatus("Не подключено",false);
-    msg.innerHTML="<div class='notice'>Не удалось подключиться: "+(e.message||e)+"</div>";
-  }finally{
-    btn.disabled=false;
-  }
+ localStorage.setItem("stone_key",key);
+ connect();
+ alert("CRM подключена к Supabase");
+ show("dashboard");
 }
 
-async function restoreConnection(){
-  const u=localStorage.getItem("stone_url");
-  const k=localStorage.getItem("stone_key");
-  if(!u || !k){show("dashboard");return}
-
-  try{
-    const client=supabase.createClient(u,k);
-    const test=await client.from("clients").select("id",{count:"exact",head:true});
-    if(test.error) throw new Error(test.error.message);
-    db=client;
-    setStatus("Подключено",true);
-  }catch(e){
-    db=null;
-    setStatus("Не подключено",false);
-  }
-  show("dashboard");
+function show(page){
+ if(page==="dashboard")dashboard();
+ else if(page==="clients")clients();
+ else if(page==="products")simpleTable("products","Товары");
+ else if(page==="sales")simpleTable("sales","Продажи");
+ else if(page==="purchases")simpleTable("purchases","Закупки");
+ else if(page==="production_plan")simpleTable("production_plan","Производство");
+ else if(page==="expenses")simpleTable("expenses","Расходы");
+ else if(page==="reports")reports();
+ else if(page==="settings")settings();
 }
 
-nav();
-restoreConnection();
+connect();
+show("dashboard");
 </script>
+
 </body>
 </html>
