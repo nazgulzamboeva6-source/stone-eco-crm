@@ -290,6 +290,7 @@ function esc(v){
   .replaceAll('"',"&quot;")
   .replaceAll("'","&#039;");
 }
+
 async function simpleTable(table,title){
  if(table==="products"){
    products();
@@ -301,390 +302,464 @@ async function simpleTable(table,title){
   return;
  }
 
- main.innerHTML="<h1>"+title+"</h1><div class='panel'><button class='btn' onclick=\"loadTable('"+table+"')\">Загрузить данные</button><div id='tableData'></div></div>";
+ main.innerHTML="<h1>"+title+"</h1><div class='panel'>Раздел будет подключён следующим этапом.</div>";
 }
+
 
 let productsData=[];
 let editingProductId=null;
 
+
 async function products(){
+
  if(!db){
-  main.innerHTML="<h1>Товары</h1><div class='panel'>Сначала подключите Supabase.</div>";
+  main.innerHTML=`
+   <h1>Товары</h1>
+   <div class="panel">
+    Сначала подключите Supabase в разделе Настройки.
+   </div>`;
   return;
  }
 
  main.innerHTML=`
- <h1>Товары</h1>
+ <h1>📦 Товары</h1>
 
  <div class="panel">
-   <button class="btn" onclick="productForm()">➕ Добавить товар</button>
-   <input class="search" id="productSearch" placeholder="🔍 Поиск товара..." oninput="filterProducts()">
+
+   <button class="btn" onclick="productForm()">
+    ➕ Добавить товар
+   </button>
+
+   <input
+    class="search"
+    id="productSearch"
+    placeholder="🔍 Поиск товара..."
+    oninput="filterProducts()"
+   >
+
  </div>
 
- <div class="panel" id="productFormBox" style="display:none"></div>
+
+ <div
+  class="panel"
+  id="productFormBox"
+  style="display:none">
+ </div>
+
 
  <div class="panel">
+
   <table>
+
    <thead>
+
     <tr>
      <th>Категория</th>
      <th>Название</th>
      <th>Ед.</th>
      <th>Себестоимость</th>
-     <th>Цена</th>
+     <th>Цена продажи</th>
      <th>Действия</th>
     </tr>
+
    </thead>
+
    <tbody id="productRows"></tbody>
+
   </table>
- </div>`;
+
+ </div>
+ `;
 
  await loadProducts();
 }
 
+
 async function loadProducts(){
- const {data,error}=await db.from("products").select("*").order("name");
+
+ const {data,error}=await db
+  .from("products")
+  .select("*")
+  .order("name");
 
  if(error){
-  productRows.innerHTML="<tr><td colspan='6'>Ошибка: "+error.message+"</td></tr>";
+
+  document.getElementById("productRows").innerHTML=
+   "<tr><td colspan='6'>Ошибка загрузки: "+
+   esc(error.message)+
+   "</td></tr>";
+
   return;
  }
 
  productsData=data||[];
+
  renderProducts(productsData);
 }
 
+
 function renderProducts(data){
+
  const rows=document.getElementById("productRows");
 
+ if(!rows)return;
+
  if(!data.length){
-  rows.innerHTML="<tr><td colspan='6'>Товаров пока нет</td></tr>";
+
+  rows.innerHTML=
+   "<tr><td colspan='6'>Товаров пока нет</td></tr>";
+
   return;
  }
 
+
  rows.innerHTML=data.map(p=>`
- <tr>
-  <td>${esc(p.category||"")}</td>
-  <td>${esc(p.name||"")}</td>
-  <td>${esc(p.unit||"")}</td>
-  <td>${esc(p.cost??"")}</td>
-  <td>${esc(p.price??p.sale_price??"")}</td>
-  <td>
-   <button class="btn small" onclick="editProduct('${p.id}')">✏️</button>
-   <button class="btn red small" onclick="deleteProduct('${p.id}')">🗑️</button>
-  </td>
- </tr>`).join("");
+
+  <tr>
+
+   <td>${esc(p.category||"")}</td>
+
+   <td><b>${esc(p.name||"")}</b></td>
+
+   <td>${esc(p.unit||"")}</td>
+
+   <td>${formatMoney(p.cost)}</td>
+
+   <td>${formatMoney(p.price??p.sale_price)}</td>
+
+   <td>
+
+    <button
+     class="btn small"
+     onclick="editProduct('${p.id}')">
+     ✏️
+    </button>
+
+    <button
+     class="btn red small"
+     onclick="deleteProduct('${p.id}')">
+     🗑️
+    </button>
+
+   </td>
+
+  </tr>
+
+ `).join("");
 }
+
+
+function formatMoney(value){
+
+ if(value===null || value===undefined || value===""){
+  return "—";
+ }
+
+ return Number(value).toLocaleString("ru-RU")+" сом";
+}
+
 
 function filterProducts(){
- const q=(document.getElementById("productSearch").value||"").toLowerCase();
 
- renderProducts(productsData.filter(p=>
-  (p.name||"").toLowerCase().includes(q) ||
-  (p.category||"").toLowerCase().includes(q)
- ));
+ const input=document.getElementById("productSearch");
+
+ if(!input)return;
+
+ const q=(input.value||"").toLowerCase().trim();
+
+
+ renderProducts(
+  productsData.filter(p=>
+
+   (p.name||"").toLowerCase().includes(q) ||
+
+   (p.category||"").toLowerCase().includes(q) ||
+
+   (p.unit||"").toLowerCase().includes(q)
+
+  )
+ );
+
 }
+
 
 function productForm(p=null){
+
  editingProductId=p?p.id:null;
 
- document.getElementById("productFormBox").style.display="block";
 
- document.getElementById("productFormBox").innerHTML=`
- <h2>${p?"Редактировать товар":"Новый товар"}</h2>
+ const box=document.getElementById("productFormBox");
+
+ box.style.display="block";
+
+
+ box.innerHTML=`
+
+ <h2>
+  ${p?"✏️ Редактировать товар":"➕ Новый товар"}
+ </h2>
+
 
  <div class="formgrid">
+
   <div>
+
    <label>Категория</label>
-   <input id="p_category" value="${esc(p?.category||"")}" placeholder="Например: Термопанели">
+
+   <select id="p_category">
+
+    <option value="">Выберите категорию</option>
+
+    <option ${p?.category==="Термопанели"?"selected":""}>
+     Термопанели
+    </option>
+
+    <option ${p?.category==="Гибкий камень"?"selected":""}>
+     Гибкий камень
+    </option>
+
+    <option ${p?.category==="Мраморная крошка"?"selected":""}>
+     Мраморная крошка
+    </option>
+
+    <option ${p?.category==="Клинкерная плитка"?"selected":""}>
+     Клинкерная плитка
+    </option>
+
+    <option ${p?.category==="Другое"?"selected":""}>
+     Другое
+    </option>
+
+   </select>
+
   </div>
 
+
   <div>
+
    <label>Название товара *</label>
-   <input id="p_name" value="${esc(p?.name||"")}" placeholder="Название">
+
+   <input
+    id="p_name"
+    value="${esc(p?.name||"")}"
+    placeholder="Например: Термопанель 25 мм">
+
   </div>
 
+
   <div>
+
    <label>Единица измерения</label>
-   <input id="p_unit" value="${esc(p?.unit||"")}" placeholder="шт / м² / кг">
+
+   <select id="p_unit">
+
+    <option value="">Выберите единицу</option>
+
+    <option ${p?.unit==="м²"?"selected":""}>м²</option>
+
+    <option ${p?.unit==="шт"?"selected":""}>шт</option>
+
+    <option ${p?.unit==="кг"?"selected":""}>кг</option>
+
+    <option ${p?.unit==="мешок"?"selected":""}>мешок</option>
+
+    <option ${p?.unit==="пог.м"?"selected":""}>пог.м</option>
+
+   </select>
+
   </div>
 
-  <div>
-   <label>Себестоимость</label>
-   <input id="p_cost" type="number" value="${p?.cost??""}" placeholder="0">
-  </div>
 
   <div>
-   <label>Цена продажи</label>
-   <input id="p_price" type="number" value="${p?.price??p?.sale_price??""}" placeholder="0">
+
+   <label>Себестоимость, сом</label>
+
+   <input
+    id="p_cost"
+    type="number"
+    min="0"
+    step="0.01"
+    value="${p?.cost??""}"
+    placeholder="0">
+
   </div>
+
+
+  <div>
+
+   <label>Цена продажи, сом</label>
+
+   <input
+    id="p_price"
+    type="number"
+    min="0"
+    step="0.01"
+    value="${p?.price??p?.sale_price??""}"
+    placeholder="0">
+
+  </div>
+
  </div>
 
- <button class="btn" onclick="saveProduct()">💾 Сохранить</button>
- <button class="btn gray" onclick="closeProductForm()">Отмена</button>
+
+ <button
+  class="btn"
+  onclick="saveProduct()">
+  💾 Сохранить
+ </button>
+
+ <button
+  class="btn gray"
+  onclick="closeProductForm()">
+  Отмена
+ </button>
+
  `;
+
 }
 
+
 function closeProductForm(){
+
  editingProductId=null;
 
  const box=document.getElementById("productFormBox");
- if(box)box.style.display="none";
+
+ if(box){
+  box.style.display="none";
+  box.innerHTML="";
+ }
+
 }
 
+
 async function saveProduct(){
- const name=document.getElementById("p_name").value.trim();
+
+ const name=document
+  .getElementById("p_name")
+  .value
+  .trim();
+
 
  if(!name){
+
   alert("Введите название товара");
+
   return;
  }
 
+
  const obj={
-  category:document.getElementById("p_category").value.trim(),
+
+  category:document
+   .getElementById("p_category")
+   .value,
+
   name:name,
-  unit:document.getElementById("p_unit").value.trim(),
-  cost:Number(document.getElementById("p_cost").value)||0,
-  price:Number(document.getElementById("p_price").value)||0
+
+  unit:document
+   .getElementById("p_unit")
+   .value,
+
+  cost:Number(
+   document.getElementById("p_cost").value
+  )||0,
+
+  price:Number(
+   document.getElementById("p_price").value
+  )||0
+
  };
+
 
  let result;
 
- if(editingProductId){
-  result=await db.from("products").update(obj).eq("id",editingProductId);
- }else{
-  result=await db.from("products").insert(obj);
- }
-
- if(result.error){
-  alert("Ошибка: "+result.error.message);
-  return;
- }
-
- alert(editingProductId?"Товар изменён":"Товар добавлен");
-
- closeProductForm();
- await loadProducts();
-}
-
-function editProduct(id){
- const p=productsData.find(x=>x.id===id);
- if(p)productForm(p);
-}
-
-async function deleteProduct(id){
- const p=productsData.find(x=>x.id===id);
- if(!p)return;
-
- if(!confirm("Удалить товар «"+p.name+"»?"))return;
-
- const {error}=await db.from("products").delete().eq("id",id);
-
- if(error){
-  alert("Ошибка удаления: "+error.message);
-  return;
- }
-
- await loadProducts();
-async function simpleTable(table,title){
- if(table==="products"){
-   products();
-   return;
- }
-
- if(!db){
-  main.innerHTML="<h1>"+title+"</h1><div class='panel'>Сначала подключите Supabase.</div>";
-  return;
- }
-
- main.innerHTML="<h1>"+title+"</h1><div class='panel'><button class='btn' onclick=\"loadTable('"+table+"')\">Загрузить данные</button><div id='tableData'></div></div>";
-}
-
-let productsData=[];
-let editingProductId=null;
-
-async function products(){
- if(!db){
-  main.innerHTML="<h1>Товары</h1><div class='panel'>Сначала подключите Supabase.</div>";
-  return;
- }
-
- main.innerHTML=`
- <h1>Товары</h1>
-
- <div class="panel">
-   <button class="btn" onclick="productForm()">➕ Добавить товар</button>
-   <input class="search" id="productSearch" placeholder="🔍 Поиск товара..." oninput="filterProducts()">
- </div>
-
- <div class="panel" id="productFormBox" style="display:none"></div>
-
- <div class="panel">
-  <table>
-   <thead>
-    <tr>
-     <th>Категория</th>
-     <th>Название</th>
-     <th>Ед.</th>
-     <th>Себестоимость</th>
-     <th>Цена</th>
-     <th>Действия</th>
-    </tr>
-   </thead>
-   <tbody id="productRows"></tbody>
-  </table>
- </div>`;
-
- await loadProducts();
-}
-
-async function loadProducts(){
- const {data,error}=await db.from("products").select("*").order("name");
-
- if(error){
-  productRows.innerHTML="<tr><td colspan='6'>Ошибка: "+error.message+"</td></tr>";
-  return;
- }
-
- productsData=data||[];
- renderProducts(productsData);
-}
-
-function renderProducts(data){
- const rows=document.getElementById("productRows");
-
- if(!data.length){
-  rows.innerHTML="<tr><td colspan='6'>Товаров пока нет</td></tr>";
-  return;
- }
-
- rows.innerHTML=data.map(p=>`
- <tr>
-  <td>${esc(p.category||"")}</td>
-  <td>${esc(p.name||"")}</td>
-  <td>${esc(p.unit||"")}</td>
-  <td>${esc(p.cost??"")}</td>
-  <td>${esc(p.price??p.sale_price??"")}</td>
-  <td>
-   <button class="btn small" onclick="editProduct('${p.id}')">✏️</button>
-   <button class="btn red small" onclick="deleteProduct('${p.id}')">🗑️</button>
-  </td>
- </tr>`).join("");
-}
-
-function filterProducts(){
- const q=(document.getElementById("productSearch").value||"").toLowerCase();
-
- renderProducts(productsData.filter(p=>
-  (p.name||"").toLowerCase().includes(q) ||
-  (p.category||"").toLowerCase().includes(q)
- ));
-}
-
-function productForm(p=null){
- editingProductId=p?p.id:null;
-
- document.getElementById("productFormBox").style.display="block";
-
- document.getElementById("productFormBox").innerHTML=`
- <h2>${p?"Редактировать товар":"Новый товар"}</h2>
-
- <div class="formgrid">
-  <div>
-   <label>Категория</label>
-   <input id="p_category" value="${esc(p?.category||"")}" placeholder="Например: Термопанели">
-  </div>
-
-  <div>
-   <label>Название товара *</label>
-   <input id="p_name" value="${esc(p?.name||"")}" placeholder="Название">
-  </div>
-
-  <div>
-   <label>Единица измерения</label>
-   <input id="p_unit" value="${esc(p?.unit||"")}" placeholder="шт / м² / кг">
-  </div>
-
-  <div>
-   <label>Себестоимость</label>
-   <input id="p_cost" type="number" value="${p?.cost??""}" placeholder="0">
-  </div>
-
-  <div>
-   <label>Цена продажи</label>
-   <input id="p_price" type="number" value="${p?.price??p?.sale_price??""}" placeholder="0">
-  </div>
- </div>
-
- <button class="btn" onclick="saveProduct()">💾 Сохранить</button>
- <button class="btn gray" onclick="closeProductForm()">Отмена</button>
- `;
-}
-
-function closeProductForm(){
- editingProductId=null;
-
- const box=document.getElementById("productFormBox");
- if(box)box.style.display="none";
-}
-
-async function saveProduct(){
- const name=document.getElementById("p_name").value.trim();
-
- if(!name){
-  alert("Введите название товара");
-  return;
- }
-
- const obj={
-  category:document.getElementById("p_category").value.trim(),
-  name:name,
-  unit:document.getElementById("p_unit").value.trim(),
-  cost:Number(document.getElementById("p_cost").value)||0,
-  price:Number(document.getElementById("p_price").value)||0
- };
-
- let result;
 
  if(editingProductId){
-  result=await db.from("products").update(obj).eq("id",editingProductId);
+
+  result=await db
+   .from("products")
+   .update(obj)
+   .eq("id",editingProductId);
+
  }else{
-  result=await db.from("products").insert(obj);
+
+  result=await db
+   .from("products")
+   .insert(obj);
+
  }
+
 
  if(result.error){
+
   alert("Ошибка: "+result.error.message);
+
   return;
  }
 
- alert(editingProductId?"Товар изменён":"Товар добавлен");
+
+ alert(
+  editingProductId
+   ?"Товар изменён"
+   :"Товар добавлен"
+ );
+
 
  closeProductForm();
+
  await loadProducts();
+
 }
+
 
 function editProduct(id){
- const p=productsData.find(x=>x.id===id);
- if(p)productForm(p);
+
+ const p=productsData.find(
+  x=>x.id===id
+ );
+
+ if(p){
+  productForm(p);
+ }
+
 }
 
+
 async function deleteProduct(id){
- const p=productsData.find(x=>x.id===id);
+
+ const p=productsData.find(
+  x=>x.id===id
+ );
+
  if(!p)return;
 
- if(!confirm("Удалить товар «"+p.name+"»?"))return;
 
- const {error}=await db.from("products").delete().eq("id",id);
+ if(!confirm(
+  "Удалить товар «"+p.name+"»?"
+ ))return;
+
+
+ const {error}=await db
+  .from("products")
+  .delete()
+  .eq("id",id);
+
 
  if(error){
-  alert("Ошибка удаления: "+error.message);
+
+  alert(
+   "Ошибка удаления: "+
+   error.message
+  );
+
   return;
  }
 
+
  await loadProducts();
+
 }
-
-
 function reports(){
  main.innerHTML="<h1>Отчёты</h1><div class='panel'>Раздел отчётов будет подключён следующим этапом.</div>";
 }
