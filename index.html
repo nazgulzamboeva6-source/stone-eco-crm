@@ -715,12 +715,14 @@ const obj={
  let result;
 
 
- if(editingProductId){
+if(editingProductId){
 
-  result=await db
-   .from("products")
-   .update(obj)
-   .eq("id",editingProductId);
+ result=await db
+  .from("products")
+  .update(obj)
+  .eq("id",editingProductId)
+  .select();
+
 
  }else{
 
