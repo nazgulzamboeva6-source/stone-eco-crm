@@ -309,6 +309,10 @@ async function simpleTable(table,title){
    products();
    return;
  }
+ if(table==="sales"){
+   salesPage();
+   return;
+ }
 
  if(!db){
   main.innerHTML="<h1>"+title+"</h1><div class='panel'>Сначала подключите Supabase.</div>";
@@ -400,7 +404,7 @@ async function loadProducts(){
  if(error){
 
   document.getElementById("productRows").innerHTML=
-   "<tr><td colspan='8'>Ошибка загрузки: "+
+   "<tr><td colspan='6'>Ошибка загрузки: "+
    esc(error.message)+
    "</td></tr>";
 
@@ -422,7 +426,7 @@ function renderProducts(data){
  if(!data.length){
 
   rows.innerHTML=
-   "<tr><td colspan='8'>Товаров пока нет</td></tr>";
+   "<tr><td colspan='6'>Товаров пока нет</td></tr>";
 
   return;
  }
@@ -802,6 +806,105 @@ async function deleteProduct(id){
  await loadProducts();
 
 }
+
+// SALES: creates a sale header and its line items. Stock is not adjusted here yet;
+// safe stock deduction should be implemented transactionally in the database.
+let salesCart=[];
+let salesClients=[];
+let salesProducts=[];
+
+async function salesPage(){
+ if(!db){
+  main.innerHTML="<h1>💰 Продажи</h1><div class='panel'>Сначала подключите Supabase в разделе Настройки.</div>";
+  return;
+ }
+ main.innerHTML=`
+  <h1>💰 Продажи</h1>
+  <div class="panel">
+   <h2>Новая продажа</h2>
+   <div class="formgrid">
+    <div><label>Клиент</label><select id="saleClient"><option value="">Без клиента</option></select></div>
+    <div><label>Способ оплаты</label><select id="salePayment"><option value="cash">Наличные</option><option value="transfer">Перевод</option><option value="card">Карта</option><option value="debt">В долг</option></select></div>
+    <div><label>Оплачено, сом</label><input id="salePaid" type="number" min="0" step="0.01" value="0"></div>
+    <div><label>Адрес доставки</label><input id="saleAddress" placeholder="Адрес доставки"></div>
+   </div>
+   <label>Комментарий</label><input id="saleComment" placeholder="Комментарий к продаже">
+  </div>
+  <div class="panel">
+   <h2>Товары</h2>
+   <div class="formgrid">
+    <div><label>Товар</label><select id="saleProduct"></select></div>
+    <div><label>Количество</label><input id="saleQty" type="number" min="0.01" step="0.01" value="1"></div>
+    <div><label>Цена за единицу, сом</label><input id="salePrice" type="number" min="0" step="0.01" value="0"></div>
+    <div style="display:flex;align-items:end"><button class="btn" onclick="addSaleItem()">➕ Добавить товар</button></div>
+   </div>
+   <div id="saleCartWrap"></div>
+   <h2>Итого: <span id="saleTotal">0</span> сом</h2>
+   <button class="btn" onclick="saveSale()">💾 Сохранить продажу</button>
+   <button class="btn gray" onclick="clearSaleCart()">Очистить товары</button>
+  </div>
+  <div class="panel"><h2>Последние продажи</h2><div id="salesHistory">Загрузка...</div></div>`;
+ salesCart=[];
+ const [cr,pr]=await Promise.all([
+  db.from('clients').select('id,name').order('name'),
+  db.from('products').select('id,name,unit,price,sale_price,cost,stock').order('name')
+ ]);
+ if(cr.error || pr.error){
+  document.getElementById('salesHistory').textContent='Ошибка загрузки справочников: '+(cr.error?.message||pr.error?.message);
+  return;
+ }
+ salesClients=cr.data||[]; salesProducts=pr.data||[];
+ document.getElementById('saleClient').innerHTML='<option value="">Без клиента</option>'+salesClients.map(c=>`<option value="${esc(c.id)}">${esc(c.name)}</option>`).join('');
+ document.getElementById('saleProduct').innerHTML=salesProducts.length?salesProducts.map(p=>`<option value="${esc(p.id)}">${esc(p.name)}${p.unit?' ('+esc(p.unit)+')':''} — остаток: ${Number(p.stock)||0}</option>`).join(''):'<option value="">Сначала добавьте товары</option>';
+ const first=salesProducts[0]; document.getElementById('salePrice').value=first?Number(first.price??first.sale_price)||0:0;
+ document.getElementById('saleProduct').onchange=()=>{const p=salesProducts.find(x=>x.id===document.getElementById('saleProduct').value);document.getElementById('salePrice').value=p?Number(p.price??p.sale_price)||0:0;};
+ renderSaleCart(); await loadSalesHistory();
+}
+
+function addSaleItem(){
+ const id=document.getElementById('saleProduct')?.value;
+ const p=salesProducts.find(x=>x.id===id);
+ const qty=Number(document.getElementById('saleQty').value);
+ const price=Number(document.getElementById('salePrice').value);
+ if(!p){alert('Сначала добавьте товар в разделе «Товары».');return;}
+ if(!Number.isFinite(qty)||qty<=0){alert('Введите количество больше нуля.');return;}
+ if(!Number.isFinite(price)||price<0){alert('Проверьте цену товара.');return;}
+ const existing=salesCart.find(x=>x.product_id===p.id);
+ if(existing){existing.quantity+=qty;existing.price=price;} else salesCart.push({product_id:p.id,name:p.name,unit:p.unit||'',quantity:qty,price,cost:Number(p.cost)||0});
+ renderSaleCart();
+}
+function renderSaleCart(){
+ const wrap=document.getElementById('saleCartWrap'); if(!wrap)return;
+ if(!salesCart.length){wrap.innerHTML='<p>Товары пока не добавлены.</p>';document.getElementById('saleTotal').textContent='0';return;}
+ wrap.innerHTML='<table><thead><tr><th>Товар</th><th>Количество</th><th>Цена</th><th>Сумма</th><th></th></tr></thead><tbody>'+salesCart.map((x,i)=>`<tr><td>${esc(x.name)} ${esc(x.unit)}</td><td>${x.quantity}</td><td>${formatMoney(x.price)}</td><td>${formatMoney(x.quantity*x.price)}</td><td><button class="btn red small" onclick="removeSaleItem(${i})">Удалить</button></td></tr>`).join('')+'</tbody></table>';
+ document.getElementById('saleTotal').textContent=salesCart.reduce((a,x)=>a+x.quantity*x.price,0).toLocaleString('ru-RU',{maximumFractionDigits:2});
+}
+function removeSaleItem(i){salesCart.splice(i,1);renderSaleCart();}
+function clearSaleCart(){salesCart=[];renderSaleCart();}
+async function saveSale(){
+ if(!db){alert('Нет подключения к базе данных.');return;}
+ if(!salesCart.length){alert('Добавьте хотя бы один товар.');return;}
+ const total=Number(salesCart.reduce((a,x)=>a+x.quantity*x.price,0).toFixed(2));
+ const paid=Number(document.getElementById('salePaid').value)||0;
+ if(paid<0 || paid>total){alert('Оплата должна быть от 0 до суммы продажи.');return;}
+ const saleNo='SALE-'+new Date().toISOString().replace(/[-:T.Z]/g,'').slice(0,14);
+ const sale={sale_no:saleNo,client_id:document.getElementById('saleClient').value||null,payment_method:document.getElementById('salePayment').value,total,paid,delivery_address:document.getElementById('saleAddress').value.trim(),comment:document.getElementById('saleComment').value.trim()};
+ const {data:created,error}=await db.from('sales').insert(sale).select('id').single();
+ if(error){alert('Не удалось сохранить продажу: '+error.message+'\nПроверь обязательные поля таблицы sales.');return;}
+ const items=salesCart.map(x=>({sale_id:created.id,product_id:x.product_id,quantity:x.quantity,price:x.price,cost:x.cost}));
+ const {error:itemError}=await db.from('sale_items').insert(items);
+ if(itemError){await db.from('sales').delete().eq('id',created.id);alert('Не удалось сохранить товары продажи: '+itemError.message+'\nЗапись продажи отменена. Остатки не менялись.');return;}
+ alert('Продажа '+saleNo+' сохранена. Остатки склада пока не изменялись.');
+ await salesPage();
+}
+async function loadSalesHistory(){
+ const el=document.getElementById('salesHistory'); if(!el)return;
+ const {data,error}=await db.from('sales').select('id,sale_no,total,paid,created_at').order('created_at',{ascending:false}).limit(20);
+ if(error){el.textContent='Ошибка загрузки продаж: '+error.message;return;}
+ if(!data?.length){el.innerHTML='<p>Продаж пока нет.</p>';return;}
+ el.innerHTML='<table><thead><tr><th>Номер</th><th>Дата</th><th>Сумма</th><th>Оплачено</th><th>Остаток долга</th></tr></thead><tbody>'+data.map(s=>`<tr><td>${esc(s.sale_no||'')}</td><td>${s.created_at?new Date(s.created_at).toLocaleString('ru-RU'):'—'}</td><td>${formatMoney(s.total)}</td><td>${formatMoney(s.paid)}</td><td>${formatMoney(Math.max(0,(Number(s.total)||0)-(Number(s.paid)||0)))}</td></tr>`).join('')+'</tbody></table>';
+}
+
 function reports(){
  main.innerHTML="<h1>Отчёты</h1><div class='panel'>Раздел отчётов будет подключён следующим этапом.</div>";
 }
@@ -843,7 +946,7 @@ function show(page){
  if(page==="dashboard")dashboard();
  else if(page==="clients")clients();
  else if(page==="products")simpleTable("products","Товары");
- else if(page==="sales")simpleTable("sales","Продажи");
+ else if(page==="sales")salesPage();
  else if(page==="purchases")simpleTable("purchases","Закупки");
  else if(page==="production_plan")simpleTable("production_plan","Производство");
  else if(page==="expenses")simpleTable("expenses","Расходы");
