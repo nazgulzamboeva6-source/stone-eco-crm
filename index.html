@@ -400,7 +400,7 @@ async function loadProducts(){
  if(error){
 
   document.getElementById("productRows").innerHTML=
-   "<tr><td colspan='6'>Ошибка загрузки: "+
+   "<tr><td colspan='8'>Ошибка загрузки: "+
    esc(error.message)+
    "</td></tr>";
 
@@ -422,7 +422,7 @@ function renderProducts(data){
  if(!data.length){
 
   rows.innerHTML=
-   "<tr><td colspan='6'>Товаров пока нет</td></tr>";
+   "<tr><td colspan='8'>Товаров пока нет</td></tr>";
 
   return;
  }
@@ -500,7 +500,7 @@ function filterProducts(){
 
 function productForm(p=null){
 
- editingProductId=p?.id:null;
+ editingProductId = p?.id ?? null;
 
 
  const box=document.getElementById("productFormBox");
