@@ -847,7 +847,7 @@ async function salesPage(){
  salesCart=[];
  const [cr,pr]=await Promise.all([
   db.from('clients').select('id,name').order('name'),
-  db.from('products').select('id,name,unit,price,sale_price,cost,stock').order('name')
+db.from('products').select('id,name,unit,price,cost,stock').order('name')
  ]);
  if(cr.error || pr.error){
   document.getElementById('salesHistory').textContent='Ошибка загрузки справочников: '+(cr.error?.message||pr.error?.message);
